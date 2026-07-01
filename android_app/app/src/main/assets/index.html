@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>吴氏族谱</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:"Microsoft YaHei","SimHei",sans-serif; background:#f5f5f5; height:100vh; overflow:hidden; }
+        
+        /* 左侧工具栏 */
+        .sidebar { 
+            background:linear-gradient(180deg,#667eea 0%,#764ba2 100%);
+            width: 90px;
+            height:100vh;
+            position:fixed; 
+            top:0; 
+            left:0; 
+            z-index:1000;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            padding:10px 5px;
+            gap:6px;
+            overflow-y:auto;
+            transition: left 0.3s ease;
+        }
+        
+        .sidebar.hidden {
+            left: -90px;
+        }
+        
+        .sidebar-title { 
+            color:white; 
+            font-size:14px; 
+            font-weight:bold;
+            margin-bottom:5px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            writing-mode:horizontal-tb;
+            text-align:center;
+        }
+        
+        .sidebar-btn { 
+            padding:8px 5px; 
+            border:none; 
+            border-radius:10px; 
+            font-size:11px; 
+            font-weight:bold; 
+            cursor:pointer; 
+            transition:all 0.3s ease;
+            white-space:nowrap;
+            width:80px;
+            text-align:center;
+        }
+        
+        .btn-overview { 
+            background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%);
+            color:white;
+        }
+        
+        .btn-branch { 
+            background:linear-gradient(135deg,#fa709a 0%,#fee140 100%);
+            color:white;
+        }
+        
+        .btn-active { 
+            box-shadow:0 0 15px rgba(255,255,0,0.8) !important;
+            border:2px solid #FFD700 !important;
+            transform:scale(1.05);
+        }
+        
+        .btn-reset { 
+            background:linear-gradient(135deg,#ff4444 0%,#cc0000 100%);
+            color:white;
+        }
+        
+        /* 侧边栏切换按钮 */
+        .sidebar-toggle {
+            position:fixed;
+            top:50%;
+            left:95px;
+            transform:translateY(-50%);
+            width:18px;
+            height:50px;
+            background:linear-gradient(180deg,#667eea 0%,#764ba2 100%);
+            border:none;
+            border-radius:0 8px 8px 0;
+            color:white;
+            font-size:10px;
+            cursor:pointer;
+            z-index:1001;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            transition: left 0.3s ease;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.2);
+        }
+        
+        .sidebar-toggle.shifted {
+            left:5px;
+        }
+        
+        /* 搜索容器 - 在左侧工具栏内 */
+        .sidebar-search {
+            width:80px;
+            margin:8px 0;
+        }
+        
+        #searchInput {
+            width:80px;
+            padding:6px 8px;
+            border:2px solid rgba(255,255,255,0.8);
+            border-radius:12px;
+            font-size:11px;
+            background:rgba(255,255,255,0.95);
+            color:#333;
+            text-align:center;
+            transition:all 0.3s ease;
+            outline:none;
+        }
+        
+        #searchInput:focus {
+            width:80px;
+            border-color:#FFD700;
+            background:white;
+            box-shadow: 0 0 10px rgba(255,215,0,0.5);
+        }
+        
+        #searchInput::placeholder {
+            color:#999;
+            font-size:10px;
+        }
+        
+        #searchResults {
+            position:fixed;
+            top:70px;
+            left:100px;
+            background:white;
+            border:1px solid #ccc;
+            border-radius:8px;
+            max-height:350px;
+            width:220px;
+            overflow-y:auto;
+            display:none;
+            z-index:3000;
+            box-shadow:0 4px 15px rgba(0,0,0,0.3);
+        }
+        
+        .search-result-item {
+            padding:10px 14px;
+            cursor:pointer;
+            border-bottom:1px solid #eee;
+            font-size:13px;
+            transition:background 0.2s;
+        }
+        
+        .search-result-item:hover {
+            background:#e3f2fd;
+        }
+        
+        .search-result-item:last-child {
+            border-bottom:none;
+        }
+        
+        .search-branch-tag {
+            font-size:10px;
+            color:#666;
+            background:#f0f0f0;
+            padding:2px 6px;
+            border-radius:8px;
+            margin-left:8px;
+        }
+        
+        /* 主内容区 */
+        .container { 
+            width:calc(100% - 90px); 
+            height:100vh; 
+            position:relative; 
+            overflow:hidden; 
+            margin-left:90px;
+            transition: width 0.3s ease, margin-left 0.3s ease;
+        }
+        
+        .container.full {
+            width:100%;
+            margin-left:0;
+        }
+        
+        #tree { 
+            width:100%; 
+            height:100%; 
+            background:#f5f5f5;
+            cursor:grab;
+        }
+        
+        #tree:active {
+            cursor:grabbing;
+        }
+        
+        .link-line { 
+            fill:none; 
+            stroke:#999; 
+            stroke-width:1.8px;
+            opacity:0.7;
+        }
+        
+        .node-group { 
+            cursor:pointer;
+        }
+        
+        .node-circle { 
+            stroke-width:2.5px;
+            transition:all 0.3s ease;
+        }
+        
+        .node-circle:hover {
+            stroke-width:4px;
+            filter:brightness(1.1);
+        }
+        
+        .node-text { 
+            font-size:12px; 
+            font-weight:bold; 
+            fill:#333;
+            text-shadow:0 0 3px white;
+        }
+        
+        .node-arrow {
+            font-size:10px;
+            fill:red;
+            text-anchor:middle;
+        }
+        
+        .expand-up-btn {
+            font-weight:bold;
+            text-shadow:0 0 5px white;
+            transition:all 0.3s ease;
+        }
+        
+        .expand-up-btn:hover {
+            fill:#4facfe;
+            font-size:20px;
+        }
+        
+        .highlight-node circle {
+            stroke:red !important;
+            stroke-width:10px !important;
+            fill: rgba(255, 0, 0, 0.3) !important;
+        }
+        
+        .highlight-node text.node-text {
+            fill: red !important;
+            font-weight: bold !important;
+            font-size: 14px !important;
+        }
+        
+        .loading { 
+            position:fixed; 
+            top:50%; 
+            left:50%; 
+            transform:translate(-50%,-50%);
+            background:rgba(0,0,0,0.85);
+            color:white; 
+            padding:25px 35px; 
+            border-radius:15px; 
+            font-size:16px;
+            z-index:2000;
+            box-shadow:0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        .controls {
+            position:fixed;
+            bottom:20px;
+            right:20px;
+            display:flex;
+            flex-direction:column;
+            gap:8px;
+            z-index:1000;
+        }
+        
+        .control-btn {
+            width:45px;
+            height:45px;
+            border:none;
+            border-radius:50%;
+            background:linear-gradient(135deg,#667eea,#764ba2);
+            color:white;
+            font-size:20px;
+            cursor:pointer;
+            box-shadow:0 3px 10px rgba(0,0,0,0.3);
+            transition:all 0.3s ease;
+        }
+        
+        .control-btn:hover {
+            transform:scale(1.1);
+        }
+        
+        .debug {
+            position:fixed;
+            bottom:10px;
+            left:100px;
+            background:rgba(0,0,0,0.8);
+            color:lime;
+            padding:10px;
+            font-size:11px;
+            font-family:monospace;
+            max-width:350px;
+            max-height:200px;
+            overflow:auto;
+            z-index:9999;
+            border-radius:8px;
+            display:none;
+        }
+    </style>
+</head>
+<body>
+    <!-- 左侧工具栏 -->
+    <div class="sidebar">
+        <div class="sidebar-title">吴氏族谱</div>
+
+        <!-- 搜索框 -->
+        <div class="sidebar-search">
+            <input type="text" id="searchInput" placeholder="🔍 搜索">
+            <div id="searchResults"></div>
+        </div>
+
+        <button class="sidebar-btn btn-overview btn-active" data-view="overview">总览</button>
+        <button class="sidebar-btn btn-branch" data-view="guoxi">国玺支系</button>
+        <button class="sidebar-btn btn-branch" data-view="guolang">国琅支系</button>
+        <button class="sidebar-btn btn-branch" data-view="guoqi">国琦支系</button>
+        <button class="sidebar-btn btn-branch" data-view="guoying">国瑛支系</button>
+        <button class="sidebar-btn btn-branch" data-view="guofan">国璠支系</button>
+        <button class="sidebar-btn btn-branch" data-view="guorui">国瑞支系</button>
+        <button class="sidebar-btn btn-branch" data-view="guozhang">国璋支系</button>
+        <button class="sidebar-btn btn-reset" onclick="resetHighlight()">重置</button>
+
+    </div>
+
+    <!-- 侧边栏切换按钮 -->
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">◀</button>
+
+    <!-- 主内容区 -->
+    <div class="container">
+        <svg id="tree"></svg>
+    </div>
+
+    <!-- 缩放控制按钮 -->
+    <div class="controls">
+        <button class="control-btn" onclick="zoomIn()">+</button>
+        <button class="control-btn" onclick="zoomOut()">−</button>
+        <button class="control-btn" onclick="fitToScreen()">⟲</button>
+    </div>
+
+    <div class="loading" id="loading">加载中...</div>
+    <div class="debug" id="debug"></div>
+
+    <script src="data.js"></script>
+    <script>
+        let currentView = 'overview';
+        let svg, g, zoomBehavior;
+        let treeLayout;
+        let rootNode;
+        let allNodesFlat = [];
+        let allNodesForSearch = [];
+        let highlightedNodeTitles = [];  // 当前高亮的节点标题数组（支持多个）
+
+        // 支系名称映射（按钮的 data-view 值 -> appData.branches 的键名）
+        const branchKeyMap = {
+            'guoxi': '国玺',
+            'guolang': '国琅',
+            'guoqi': '国琦',
+            'guoying': '国瑛',
+            'guofan': '国璠',
+            'guorui': '国瑞',
+            'guozhang': '国璋'
+        };
+
+        // 调试日志
+        function debug(msg) {
+            const d = document.getElementById('debug');
+            d.style.display = 'block';
+            d.innerHTML += msg + '<br>';
+            console.log(msg);
+        }
+
+        function init() {
+            debug('开始初始化...');
+            
+            if (typeof appData === 'undefined') {
+                debug('等待数据加载...');
+                setTimeout(init, 100);
+                return;
+            }
+            
+            debug('数据已加载');
+            document.getElementById('loading').style.display = 'none';
+            
+            const container = document.getElementById('tree');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            svg = d3.select('#tree')
+                .attr('viewBox', `0 0 ${width} ${height}`)
+                .attr('preserveAspectRatio', 'xMidYMid meet');
+
+            // 禁用双击放大，改为铺满屏幕
+            zoomBehavior = d3.zoom()
+                .scaleExtent([0.02, 5])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                    
+                    // 动态调整高亮节点的圆圈半径，保持视觉大小不变
+                    const k = event.transform.k;
+                    g.selectAll('.highlight-node circle')
+                        .attr('r', Math.max(3, 8 / k));
+                });
+
+            svg.call(zoomBehavior);
+
+            // 双击空白处铺满屏幕
+            svg.on('dblclick', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                fitToScreen();
+            });
+
+            // 背景双击也铺满
+            svg.select('rect.background').remove();
+            svg.insert('rect', ':first-child')
+                .attr('class', 'background')
+                .attr('width', width)
+                .attr('height', height)
+                .attr('fill', 'transparent')
+                .on('dblclick', () => {
+                    fitToScreen();
+                });
+
+            g = svg.append('g');
+
+            // 向下的树布局
+            treeLayout = d3.tree()
+                .nodeSize([60, 120])
+                .separation((a, b) => a.parent === b.parent ? 1.3 : 2);
+
+            // 收集所有节点用于搜索
+            collectAllNodes(appData.full_tree);
+            debug(`已收集 ${allNodesForSearch.length} 个节点用于搜索`);
+
+            loadView('overview');
+            attachEvents();
+            debug('初始化完成！');
+        }
+
+        // 收集所有节点（包括折叠的）
+        function collectAllNodes(treeData) {
+            allNodesForSearch = [];
+            
+            function traverse(node) {
+                allNodesForSearch.push({
+                    title: node.title || '',
+                    id: node.id || '',
+                    rawNode: node
+                });
+                if (node.children) {
+                    node.children.forEach(traverse);
+                }
+            }
+            
+            traverse(treeData);
+        }
+
+        function loadView(viewName) {
+            currentView = viewName;
+
+            document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.remove('btn-active'));
+            document.querySelector(`.sidebar-btn[data-view="${viewName}"]`).classList.add('btn-active');
+
+            let treeData;
+            if (viewName === 'overview') {
+                // 总览：从传代始祖（仲雍）开始显示
+                treeData = appData.overview_tree || appData.full_tree;
+            } else {
+                // 使用映射查找支系数据
+                const branchKey = branchKeyMap[viewName] || viewName;
+                treeData = appData.branches[branchKey];
+            }
+
+            if (!treeData) {
+                alert('数据加载失败！');
+                return;
+            }
+
+            rootNode = d3.hierarchy(treeData);
+
+            // 非总览视图：默认只展开前1层，其余折叠
+            if (viewName !== 'overview') {
+                rootNode.descendants().forEach(d => {
+                    if (d.depth > 1) {
+                        d._children = d.children;
+                        d.children = null;
+                    }
+                });
+            }
+            // 总览视图：全部展开，不折叠
+
+            updateTree(rootNode);
+            setTimeout(fitToScreen, 300);
+        }
+
+        function updateTree(source) {
+            const duration = 400;
+            const nodes = rootNode.descendants();
+            const links = rootNode.links();
+
+            treeLayout(rootNode);
+
+            nodes.forEach(d => {
+                d.x = d.x;
+                d.y = d.y;
+            });
+
+            const link = g.selectAll('.link-line')
+                .data(links, d => d.target.data.id || d.target.data.title + '-' + d.target.depth);
+
+            link.exit().transition().duration(duration).attr('opacity', 0).remove();
+
+            const linkEnter = link.enter()
+                .append('path')
+                .attr('class', 'link-line')
+                .attr('d', d => {
+                    return `M${d.source.x},${d.source.y} C${d.source.x},${(d.source.y + d.target.y) / 2} ${d.target.x},${(d.source.y + d.target.y) / 2} ${d.target.x},${d.target.y}`;
+                });
+
+            linkEnter.merge(link)
+                .transition().duration(duration)
+                .attr('d', d => {
+                    return `M${d.source.x},${d.source.y} C${d.source.x},${(d.source.y + d.target.y) / 2} ${d.target.x},${(d.source.y + d.target.y) / 2} ${d.target.x},${d.target.y}`;
+                });
+
+            const node = g.selectAll('.node-group')
+                .data(nodes, d => d.data.id || d.data.title + '-' + d.depth);
+
+            node.exit().transition().duration(duration).attr('opacity', 0).remove();
+
+            const nodeEnter = node.enter()
+                .append('g')
+                .attr('class', d => `node-group ${d._children && d._children.length > 0 ? 'has-children' : ''}`)
+                .attr('transform', d => `translate(${d.x},${d.y})`)
+                .on('click', (event, d) => {
+                    event.stopPropagation();
+                    toggleNode(d);
+                });
+
+            // 为根节点添加向上展开按钮（仅总览视图）
+            nodeEnter.filter(d => d.depth === 0 && currentView === 'overview')
+                .append('text')
+                .attr('class', 'expand-up-btn')
+                .attr('dy', -20)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', '16px')
+                .attr('fill', '#667eea')
+                .attr('cursor', 'pointer')
+                .text('△')
+                .on('click', (event, d) => {
+                    event.stopPropagation();
+                    expandUpward();
+                })
+                .append('title')
+                .text('点击向上展开祖先');
+
+            nodeEnter.append('circle')
+                .attr('class', 'node-circle')
+                .attr('r', d => {
+                    // 高亮节点：半径根据缩放级别调整，保持视觉大小不变
+                    if (highlightedNodeTitles.includes(d.data.title)) {
+                        const transform = d3.zoomTransform(svg.node());
+                        const k = transform ? transform.k : 1;
+                        return Math.max(3, 8 / k);
+                    }
+                    return 8;
+                })
+                .attr('fill', d => getNodeColor(d))
+                .attr('stroke', d => getNodeColor(d));
+
+            nodeEnter.append('text')
+                .attr('class', 'node-text')
+                .attr('dy', d => d.children || d._children ? '-10' : '20')
+                .attr('text-anchor', 'middle')
+                .text(d => d.data.title);
+
+            nodeEnter.append('text')
+                .attr('class', 'node-arrow')
+                .attr('dy', 5)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', '10px')
+                .attr('fill', 'red')
+                .text(d => {
+                    // 总览视图不显示折叠箭头（已全部展开，不允许折叠）
+                    if (currentView === 'overview') return '';
+                    return (d._children && d._children.length > 0) ? '▼' : '';
+                });
+
+            const nodeUpdate = nodeEnter.merge(node);
+
+            nodeUpdate.transition().duration(duration)
+                .attr('transform', d => `translate(${d.x},${d.y})`);
+
+            nodeUpdate.select('circle')
+                .attr('fill', d => getNodeColor(d))
+                .attr('stroke', d => getNodeColor(d))
+                .attr('r', d => {
+                    // 高亮节点：半径根据缩放级别调整，保持视觉大小不变
+                    if (highlightedNodeTitles.includes(d.data.title)) {
+                        const transform = d3.zoomTransform(svg.node());
+                        const k = transform ? transform.k : 1;
+                        return Math.max(3, 8 / k);
+                    }
+                    return 8;
+                });
+
+            nodeUpdate.select('text.node-text')
+                .attr('dy', d => d.children || d._children ? '-10' : '20')
+                .text(d => d.data.title);
+
+            nodeUpdate.select('text.node-arrow')
+                .text(d => {
+                    if (currentView === 'overview') return '';
+                    return (d._children && d._children.length > 0) ? '▼' : '';
+                });
+
+            // 重新应用高亮（确保缩放、拖拽后高亮不丢失）
+            g.selectAll('.node-group').classed('highlight-node', d => highlightedNodeTitles.includes(d.data.title));
+        }
+
+        function getNodeColor(d) {
+            if (d._children && d._children.length > 0) return '#ff4444';
+            return '#44cc44';
+        }
+
+        function toggleNode(d) {
+            // 总览视图不允许折叠（已全部展开）
+            if (currentView === 'overview') return;
+            
+            if (d.children) {
+                d._children = d.children;
+                d.children = null;
+            } else if (d._children) {
+                d.children = d._children;
+                d._children = null;
+            }
+            updateTree(d);
+        }
+
+        // 向上展开（用于总览视图中传代始祖的父节点）
+        function expandUpward() {
+            if (currentView !== 'overview') return;
+            
+            // 获取祖先链
+            const ancestors = appData.ancestors_chain || [];
+            const currentRootTitle = rootNode.data.title;
+            
+            // 找到当前根节点在祖先链中的位置
+            let currentIndex = -1;
+            for (let i = 0; i < ancestors.length; i++) {
+                if (ancestors[i].title === currentRootTitle) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            
+            if (currentIndex > 0) {
+                // 获取父节点
+                const parentNode = ancestors[currentIndex - 1];
+                
+                // 创建新的树数据
+                const newTreeData = JSON.parse(JSON.stringify(parentNode));
+                
+                // 设置新根节点
+                rootNode = d3.hierarchy(newTreeData);
+                
+                // 展开到当前节点
+                rootNode.descendants().forEach(d => {
+                    if (d.data.title !== currentRootTitle && d.depth > 0) {
+                        d._children = d.children;
+                        d.children = null;
+                    }
+                });
+                
+                updateTree(rootNode);
+                setTimeout(fitToScreen, 300);
+            } else {
+                alert('已经是最高祖先，无法继续向上展开！');
+            }
+        }
+
+        function attachEvents() {
+            document.querySelectorAll('.sidebar-btn[data-view]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    loadView(this.getAttribute('data-view'));
+                });
+            });
+
+            const searchInput = document.getElementById('searchInput');
+            searchInput.addEventListener('input', function() {
+                doSearch(this.value);
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.sidebar-search') && !e.target.closest('#searchResults')) {
+                    document.getElementById('searchResults').style.display = 'none';
+                }
+            });
+        }
+
+        // 搜索功能
+        function doSearch(keyword) {
+            const resultsDiv = document.getElementById('searchResults');
+            
+            if (!keyword || keyword.length === 0) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+
+            const results = allNodesForSearch.filter(n => 
+                n.title.includes(keyword)
+            ).slice(0, 30);
+
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding:15px;color:#999;text-align:center;">未找到匹配的人名</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+
+            resultsDiv.innerHTML = results.map((n, i) => {
+                const branchName = findBranchName(n.rawNode);
+                return `<div class="search-result-item" onclick="jumpToNode('${n.title.replace(/'/g, "\\'")}', '${n.id}')">
+                    ${n.title}
+                    ${branchName ? `<span class="search-branch-tag">${branchName}</span>` : ''}
+                </div>`;
+            }).join('');
+            resultsDiv.style.display = 'block';
+        }
+
+        function findBranchName(node) {
+            // 简单判断属于哪个支系
+            const title = node.title || '';
+            for (let branchName of ['国玺', '国琅', '国琦', '国瑛', '国璠', '国瑞', '国璋']) {
+                let tempNode = node;
+                while (tempNode) {
+                    if (tempNode.title === branchName) {
+                        return branchName + '支系';
+                    }
+                    tempNode = tempNode.parent;
+                }
+            }
+            return '';
+        }
+
+        function jumpToNode(title, id) {
+            document.getElementById('searchResults').style.display = 'none';
+            document.getElementById('searchInput').value = '';
+
+            let targetNode = null;
+            let targetBranch = null;
+
+            if (currentView === 'overview') {
+                // 总览视图：只在总览数据中查找
+                targetNode = findNodeInTree(appData.overview_tree, title);
+                if (targetNode) {
+                    targetBranch = 'overview';
+                }
+            } else {
+                // 支系视图：只在当前支系中查找
+                const branchKey = branchKeyMap[currentView] || currentView;
+                const branch = appData.branches[branchKey];
+                if (branch) {
+                    targetNode = findNodeInTree(branch, title);
+                    if (targetNode) {
+                        targetBranch = currentView;
+                    }
+                }
+            }
+
+            if (!targetNode) {
+                if (currentView === 'overview') {
+                    alert('未找到该节点！该人物可能不在总览范围内。');
+                } else {
+                    alert('未找到该节点！该人物可能不在当前支系范围内。');
+                }
+                return;
+            }
+
+            // 切换到对应的支系/总览
+            if (targetBranch) {
+                // 将节点标题添加到高亮数组
+                if (!highlightedNodeTitles.includes(title)) {
+                    highlightedNodeTitles.push(title);
+                }
+                
+                loadView(targetBranch);
+                
+                // 等待树加载完成后，展开到目标节点
+                setTimeout(() => {
+                    // 总览视图已全部展开，不需要再展开
+                    if (currentView !== 'overview') {
+                        expandToNode(rootNode, title);
+                    }
+                    updateTree(rootNode);
+                    setTimeout(() => {
+                        centerOnNode(title);
+                    }, 500);
+                }, 500);
+            }
+        }
+
+        function findNodeInTree(treeData, title) {
+            if (treeData.title === title) return treeData;
+            for (let child of (treeData.children || [])) {
+                const result = findNodeInTree(child, title);
+                if (result) return result;
+            }
+            return null;
+        }
+
+        function expandToNode(node, title) {
+            if (node.data.title === title) return true;
+            
+            // 先展开当前节点的子节点
+            if (node._children) {
+                node.children = node._children;
+                node._children = null;
+            }
+            
+            for (let child of (node.children || [])) {
+                if (expandToNode(child, title)) return true;
+            }
+            
+            return false;
+        }
+
+        function centerOnNode(title) {
+            const target = rootNode.descendants().find(d => d.data.title === title);
+            if (!target) return;
+
+            // 放大并居中
+            const container = document.getElementById('tree');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            const scale = 2;  // 放大级别
+            const translateX = width/2 - target.x * scale;
+            const translateY = height/2 - target.y * scale;
+
+            svg.transition().duration(800).call(
+                zoomBehavior.transform,
+                d3.zoomIdentity.translate(translateX, translateY).scale(scale)
+            );
+        }
+
+        // 重置高亮
+        function resetHighlight() {
+            highlightedNodeTitles = [];
+            updateTree(rootNode);
+        }
+
+        // 切换侧边栏显示/隐藏
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const container = document.querySelector('.container');
+            const toggleBtn = document.getElementById('sidebarToggle');
+            const isHidden = sidebar.classList.contains('hidden');
+
+            if (isHidden) {
+                // 显示侧边栏
+                sidebar.classList.remove('hidden');
+                container.classList.remove('full');
+                toggleBtn.classList.remove('shifted');
+                toggleBtn.innerHTML = '◀';
+            } else {
+                // 隐藏侧边栏
+                sidebar.classList.add('hidden');
+                container.classList.add('full');
+                toggleBtn.classList.add('shifted');
+                toggleBtn.innerHTML = '▶';
+            }
+
+            // 延迟一下让CSS过渡完成，再重新计算树布局
+            setTimeout(() => {
+                if (rootNode) fitToScreen();
+            }, 350);
+        }
+
+        function fitToScreen() {
+            if (!rootNode) return;
+
+            const container = document.getElementById('tree');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            const nodes = rootNode.descendants();
+            if (nodes.length === 0) return;
+
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+            nodes.forEach(d => {
+                if (d.x < minX) minX = d.x;
+                if (d.x > maxX) maxX = d.x;
+                if (d.y < minY) minY = d.y;
+                if (d.y > maxY) maxY = d.y;
+            });
+
+            const treeWidth = maxX - minX || 1;
+            const treeHeight = maxY - minY || 1;
+
+            const padding = 60;
+            const scaleX = (width - padding * 2) / treeWidth;
+            const scaleY = (height - padding * 2) / treeHeight;
+            const scale = Math.min(scaleX, scaleY, 2);
+
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+
+            const translateX = width/2 - centerX * scale;
+            const translateY = height/2 - centerY * scale;
+
+            svg.transition().duration(600).call(
+                zoomBehavior.transform,
+                d3.zoomIdentity.translate(translateX, translateY).scale(scale)
+            );
+        }
+
+        function zoomIn() {
+            svg.transition().call(zoomBehavior.scaleBy, 1.3);
+        }
+
+        function zoomOut() {
+            svg.transition().call(zoomBehavior.scaleBy, 0.7);
+        }
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
