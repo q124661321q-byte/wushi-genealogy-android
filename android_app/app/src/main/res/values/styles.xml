@@ -1,7 +1,0 @@
-<resources>
-    <!-- 隐藏 ActionBar，全屏显示 WebView -->
-    <style name="Theme.WushiApp" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="android:windowFullscreen">true</item>
-        <item name="android:windowContentOverlay">@null</item>
-    </style>
-</resources>
